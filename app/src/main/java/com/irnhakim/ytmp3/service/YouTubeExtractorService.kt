@@ -251,6 +251,10 @@ class YouTubeExtractorService(private val context: Context) {
                     addOption("--ignore-errors")
                     addOption("--newline")
                     addOption("--no-part")
+                    // Add user-agent to mimic browser
+                    addOption("--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
+                    // Add referer header
+                    addOption("--add-header", "Referer: https://www.youtube.com/")
                     if (forceMerge) {
                         // Hanya paksa merge jika memang memilih stream terpisah (video+audio)
                         addOption("--merge-output-format", "mp4")
@@ -268,13 +272,10 @@ class YouTubeExtractorService(private val context: Context) {
                         }
                         onProgress(safeProgress, etaInSeconds, text)
                         
-                        // Hentikan proses jika sudah 100% dan file tersedia
+                        // Hentikan fallback jika progres sudah mencapai 100%
                         if (safeProgress >= 100f && !downloadCompleted) {
-                            val tempFile = findLatestDownloadedFile(outputDir, setOf("mp4", "mkv", "webm", "m4v", "3gp"), 30 * 1000)
-                            if (tempFile != null && tempFile.exists() && tempFile.length() > 0) {
-                                downloadCompleted = true
-                                android.util.Log.d("YouTubeExtractor", "Download completed at 100%, stopping further processing")
-                            }
+                            downloadCompleted = true
+                            android.util.Log.d("YouTubeExtractor", "Download reached 100%, will not attempt fallbacks")
                         }
                     } catch (_: Exception) {
                     }
@@ -286,6 +287,11 @@ class YouTubeExtractorService(private val context: Context) {
 
             // Deteksi hasil awal dan siapkan fallback berjenjang
             var downloadedFile = findLatestDownloadedFile(outputDir, setOf("mp4", "mkv", "webm", "m4v", "3gp"), 5 * 60 * 1000)
+
+            // Jika progres sudah 100%, jangan lakukan fallback; lakukan pencarian tambahan saja
+            if (downloadCompleted && (downloadedFile == null || !downloadedFile.exists() || downloadedFile.length() <= 0L)) {
+                downloadedFile = findLatestDownloadedFile(outputDir, setOf("mp4", "mkv", "webm", "m4v", "3gp"), 10 * 60 * 1000)
+            }
 
             if ((downloadedFile == null || requestedUnavailable) && !downloadCompleted) {
                 val fallbacks = listOf(
@@ -356,6 +362,10 @@ class YouTubeExtractorService(private val context: Context) {
                     addOption("--no-playlist")
                     addOption("--no-warnings")
                     addOption("--ignore-errors")
+                    // Add user-agent to mimic browser
+                    addOption("--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
+                    // Add referer header
+                    addOption("--add-header", "Referer: https://www.youtube.com/")
                 }
                 
                 android.util.Log.d("YouTubeExtractor", "Starting audio download (extract to MP3): $url")
@@ -366,13 +376,10 @@ class YouTubeExtractorService(private val context: Context) {
                         val safeProgress = progress.coerceIn(0f, 100f)
                         onProgress(safeProgress, etaInSeconds, line ?: "")
                         
-                        // Hentikan proses jika sudah 100% dan file tersedia
+                        // Hentikan fallback jika progres audio sudah mencapai 100%
                         if (safeProgress >= 100f && !audioDownloadCompleted) {
-                            val tempFile = findLatestDownloadedFile(outputDir, setOf("mp3", "m4a", "opus", "webm", "m4b", "aac", "wav", "flac"), 30 * 1000)
-                            if (tempFile != null && tempFile.exists() && tempFile.length() > 0) {
-                                audioDownloadCompleted = true
-                                android.util.Log.d("YouTubeExtractor", "Audio download completed at 100%, stopping further processing")
-                            }
+                            audioDownloadCompleted = true
+                            android.util.Log.d("YouTubeExtractor", "Audio download reached 100%, will not attempt fallbacks")
                         }
                     } catch (_: Exception) {
                     }
@@ -393,13 +400,10 @@ class YouTubeExtractorService(private val context: Context) {
                         val safeProgress = progress.coerceIn(0f, 100f)
                         onProgress(safeProgress, etaInSeconds, line ?: "")
                         
-                        // Hentikan proses jika sudah 100% dan file tersedia
+                        // Hentikan fallback jika progres audio sudah mencapai 100%
                         if (safeProgress >= 100f && !audioDownloadCompleted) {
-                            val tempFile = findLatestDownloadedFile(outputDir, setOf("m4a", "opus", "webm", "m4b", "aac", "wav", "flac"), 30 * 1000)
-                            if (tempFile != null && tempFile.exists() && tempFile.length() > 0) {
-                                audioDownloadCompleted = true
-                                android.util.Log.d("YouTubeExtractor", "Audio download completed at 100%, stopping further processing")
-                            }
+                            audioDownloadCompleted = true
+                            android.util.Log.d("YouTubeExtractor", "Audio download reached 100%, will not attempt fallbacks")
                         }
                     } catch (_: Exception) {
                     }
@@ -410,6 +414,15 @@ class YouTubeExtractorService(private val context: Context) {
             var downloadedFile = findLatestDownloadedFile(outputDir, setOf("mp3"), 5 * 60 * 1000)
             if (downloadedFile == null) {
                 downloadedFile = findLatestDownloadedFile(outputDir, setOf("m4a", "opus", "webm", "m4b", "aac", "wav", "flac"), 5 * 60 * 1000)
+            }
+            // Jika progres sudah 100% namun file belum terdeteksi, lakukan pencarian tambahan tanpa fallback
+            if (audioDownloadCompleted && (downloadedFile == null || !downloadedFile.exists() || downloadedFile.length() <= 0L)) {
+                downloadedFile = findLatestDownloadedFile(outputDir, setOf("mp3", "m4a", "opus", "webm", "m4b", "aac", "wav", "flac"), 10 * 60 * 1000)
+            }
+
+            // Jika progres sudah 100% namun file belum terdeteksi, lakukan pencarian tambahan tanpa fallback
+            if (audioDownloadCompleted && (downloadedFile == null || !downloadedFile.exists() || downloadedFile.length() <= 0L)) {
+                downloadedFile = findLatestDownloadedFile(outputDir, setOf("mp3", "m4a", "opus", "webm", "m4b", "aac", "wav", "flac"), 10 * 60 * 1000)
             }
 
             // Jika masih belum ada dan belum selesai, lakukan fallback tanpa ekstraksi: ambil bestaudio m4a/opus/webm
@@ -427,13 +440,10 @@ class YouTubeExtractorService(private val context: Context) {
                         val safeProgress = progress.coerceIn(0f, 100f)
                         onProgress(safeProgress, etaInSeconds, line ?: "")
                         
-                        // Hentikan proses jika sudah 100% dan file tersedia
+                        // Hentikan fallback jika progres audio sudah mencapai 100%
                         if (safeProgress >= 100f && !audioDownloadCompleted) {
-                            val tempFile = findLatestDownloadedFile(outputDir, setOf("m4a", "opus", "webm", "m4b", "aac"), 30 * 1000)
-                            if (tempFile != null && tempFile.exists() && tempFile.length() > 0) {
-                                audioDownloadCompleted = true
-                                android.util.Log.d("YouTubeExtractor", "Fallback audio download completed at 100%, stopping further processing")
-                            }
+                            audioDownloadCompleted = true
+                            android.util.Log.d("YouTubeExtractor", "Fallback audio download reached 100%, will not attempt further fallbacks")
                         }
                     } catch (_: Exception) {
                     }
