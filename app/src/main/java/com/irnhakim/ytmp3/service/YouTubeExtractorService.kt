@@ -15,6 +15,20 @@ class YouTubeExtractorService(private val context: Context) {
     private val initLock = Any()
     @Volatile
     private var ffmpegAvailable: Boolean = false
+
+    // Fungsi untuk mendapatkan file cookie jika ada
+    private fun getCookieFile(): File? {
+        // Misal file cookie disimpan di direktori files dengan nama "cookies.txt"
+        val cookieFile = File(context.filesDir, "cookies.txt")
+        return if (cookieFile.exists()) cookieFile else null
+    }
+
+    // Fungsi untuk mendapatkan proxy jika dikonfigurasi
+    private fun getProxy(): String? {
+        // Misal proxy disimpan di SharedPreferences dengan key "proxy"
+        val sharedPref = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+        return sharedPref.getString("proxy", null)
+    }
     
     suspend fun initializeYoutubeDL(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
@@ -255,6 +269,20 @@ class YouTubeExtractorService(private val context: Context) {
                     addOption("--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
                     // Add referer header
                     addOption("--add-header", "Referer: https://www.youtube.com/")
+                    // Add no-check-certificate to avoid SSL issues
+                    addOption("--no-check-certificate")
+                    // Clear yt-dlp cache before download
+                    addOption("--rm-cache-dir")
+                    // Add cookie support if cookie file exists
+                    val cookieFile = getCookieFile()
+                    if (cookieFile != null && cookieFile.exists()) {
+                        addOption("--cookies", cookieFile.absolutePath)
+                    }
+                    // Add proxy support if proxy is configured
+                    val proxy = getProxy()
+                    if (!proxy.isNullOrBlank()) {
+                        addOption("--proxy", proxy)
+                    }
                     if (forceMerge) {
                         // Hanya paksa merge jika memang memilih stream terpisah (video+audio)
                         addOption("--merge-output-format", "mp4")
@@ -267,8 +295,12 @@ class YouTubeExtractorService(private val context: Context) {
                     try {
                         val safeProgress = progress.coerceIn(0f, 100f)
                         val text = line ?: ""
+                        android.util.Log.d("YouTubeExtractor", "Progress: $safeProgress%, Line: $text")
                         if (text.contains("Requested format is not available", ignoreCase = true)) {
                             requestedUnavailable = true
+                        }
+                        if (text.contains("HTTP Error 403", ignoreCase = true)) {
+                            android.util.Log.e("YouTubeExtractor", "HTTP 403 Forbidden detected during download")
                         }
                         onProgress(safeProgress, etaInSeconds, text)
                         
@@ -366,6 +398,10 @@ class YouTubeExtractorService(private val context: Context) {
                     addOption("--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36")
                     // Add referer header
                     addOption("--add-header", "Referer: https://www.youtube.com/")
+                    // Add no-check-certificate to avoid SSL issues
+                    addOption("--no-check-certificate")
+                    // Clear yt-dlp cache before download
+                    addOption("--rm-cache-dir")
                 }
                 
                 android.util.Log.d("YouTubeExtractor", "Starting audio download (extract to MP3): $url")
